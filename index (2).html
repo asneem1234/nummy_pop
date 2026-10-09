@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Nummy Pop</title>
+<meta name="theme-color" content="#ffd6e8">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<style>
+  :root{--pink:#ffd6e8;--pink2:#ff9ec7;--mint:#c9f5e4;--mint2:#6fdcb0;--ink:#5b3a63;--cream:#fff8f0;}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+  html,body{height:100%;margin:0}
+  body{font-family:"Baloo 2","Comic Sans MS","Chalkboard SE",system-ui,sans-serif;color:var(--ink);
+    background:radial-gradient(circle at 20% 10%,#fff 0 6%,transparent 7%),
+               radial-gradient(circle at 80% 30%,#fff 0 4%,transparent 5%),
+               linear-gradient(160deg,var(--pink),#e6d9ff 60%,var(--mint));
+    display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:manipulation}
+  .app{width:min(100vw,520px);height:100dvh;max-height:820px;display:flex;flex-direction:column;
+    padding:max(env(safe-area-inset-top),18px) 18px max(env(safe-area-inset-bottom),18px);gap:14px}
+  header{text-align:center}
+  h1{margin:0;font-size:clamp(34px,9vw,48px);letter-spacing:1px;text-shadow:0 3px 0 #fff}
+  h1 span{display:inline-block;animation:bob 2s ease-in-out infinite}
+  h1 span:nth-child(2n){animation-delay:.3s}
+  @keyframes bob{50%{transform:translateY(-5px)}}
+  .stats{display:flex;justify-content:center;gap:12px}
+  .pill{background:#fff;border-radius:999px;padding:6px 18px;font-weight:700;box-shadow:0 4px 0 rgba(91,58,99,.15)}
+  .bar{height:16px;background:#fff;border-radius:99px;overflow:hidden;box-shadow:inset 0 2px 4px rgba(0,0,0,.1)}
+  .bar i{display:block;height:100%;width:100%;background:linear-gradient(90deg,var(--mint2),var(--pink2));border-radius:99px;transform-origin:left}
+  .msg{text-align:center;font-size:20px;font-weight:700;min-height:56px;display:flex;align-items:center;justify-content:center;padding:0 10px}
+  .row{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:16px;min-height:0}
+  .num{border:0;border-radius:32px;font:inherit;font-size:clamp(64px,22vw,120px);font-weight:800;color:var(--ink);cursor:pointer;
+    box-shadow:0 10px 0 rgba(91,58,99,.2);transition:transform .08s,box-shadow .08s;position:relative}
+  #b0{background:var(--cream)} #b1{background:#fff}
+  #b0{background:#fff0f6} #b1{background:#effcf6}
+  .num:active{transform:translateY(8px);box-shadow:0 2px 0 rgba(91,58,99,.2)}
+  .num.pop{animation:pop .25s}
+  .num.bad{animation:shake .35s;background:#ffc4c4}
+  .num.good{background:#c9f5a8}
+  @keyframes pop{50%{transform:scale(1.07)}}
+  @keyframes shake{25%{transform:translateX(-10px)}75%{transform:translateX(10px)}}
+  .hint{text-align:center;font-size:13px;opacity:.7}
+  .over{position:absolute;inset:0;background:rgba(255,248,240,.92);display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:24px;z-index:5}
+  .over.show{display:flex}
+  .over .big{font-size:64px}
+  .over h2{margin:0;font-size:32px}
+  .over button{border:0;border-radius:999px;background:var(--pink2);color:#fff;font:inherit;font-size:24px;font-weight:800;padding:12px 38px;cursor:pointer;box-shadow:0 6px 0 #d96ba0}
+  .over button:active{transform:translateY(5px);box-shadow:0 1px 0 #d96ba0}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1><span>N</span><span>u</span><span>m</span><span>m</span><span>y</span> <span>P</span><span>o</span><span>p</span> 🍓</h1>
+  </header>
+  <div class="stats">
+    <div class="pill">⭐ Score <b id="score">0</b></div>
+    <div class="pill">👑 Best <b id="best">0</b></div>
+  </div>
+  <div class="bar"><i id="fill"></i></div>
+  <div class="msg" id="msg">Tap the bigger number to start! 🌸</div>
+  <div class="row">
+    <button class="num" id="b0" aria-label="left number"></button>
+    <button class="num" id="b1" aria-label="right number"></button>
+  </div>
+  <div class="hint">You get 1 second per round • keys: ← → or A D</div>
+</div>
+
+<div class="over" id="over">
+  <div class="big" id="overEmoji">🥺</div>
+  <h2 id="overTitle">Oopsie!</h2>
+  <div id="overText"></div>
+  <button id="again">Play again</button>
+</div>
+
+<script>
+(() => {
+  const LIMIT = 1000; // 1 second per round
+  const $ = id => document.getElementById(id);
+  const b = [$('b0'), $('b1')], fill = $('fill'), msg = $('msg');
+  let vals = [0,0], score = 0, state = 'idle', timer = null, startT = 0, raf = 0;
+  let best = 0;
+  try { best = +localStorage.getItem('nummy-best') || 0; } catch(e){}
+  $('best').textContent = best;
+
+  const cheers = ['Yay! 🎉','Nice! ✨','Wow! 🌟','Cutie! 💖','Zoom! 🚀','Sweet! 🍭','Pop pop! 🫧'];
+
+  function newPair(){
+    const max = Math.min(99, 9 + score * 2);
+    const a = 1 + Math.floor(Math.random()*max);
+    let c; do { c = 1 + Math.floor(Math.random()*max); } while (c === a);
+    vals = [a,c];
+    b.forEach((el,i)=>{ el.textContent = vals[i]; el.className='num'; void el.offsetWidth; el.classList.add('pop'); });
+  }
+
+  function startRound(){
+    newPair();
+    startT = performance.now();
+    clearTimeout(timer);
+    timer = setTimeout(() => lose('Too slow! ⏰'), LIMIT);
+    cancelAnimationFrame(raf);
+    const tick = () => {
+      const p = Math.min(1,(performance.now()-startT)/LIMIT);
+      fill.style.transform = `scaleX(${1-p})`;
+      if (state==='playing' && p<1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+  }
+
+  function pick(i){
+    if (over.classList.contains('show')) return;
+    const correct = vals[i] > vals[1-i];
+    if (state === 'idle'){
+      if (correct){ state='playing'; score=0; $('score').textContent=0; msg.textContent='Go go go! 🏃‍♀️'; flash(i,'good'); setTimeout(startRound,120); }
+      else { flash(i,'bad'); msg.textContent='Not that one — try the bigger one! 🙈'; }
+      return;
+    }
+    if (state !== 'playing') return;
+    if (!correct){ flash(i,'bad'); return lose('Wrong one! 🙈'); }
+    clearTimeout(timer);
+    score++; $('score').textContent = score;
+    msg.textContent = cheers[Math.floor(Math.random()*cheers.length)];
+    flash(i,'good');
+    setTimeout(()=>{ if(state==='playing') startRound(); }, 90);
+  }
+
+  function flash(i,cls){ b[i].classList.remove('pop','bad','good'); void b[i].offsetWidth; b[i].classList.add(cls); }
+
+  function lose(reason){
+    if (state !== 'playing') return;
+    state = 'over';
+    clearTimeout(timer); cancelAnimationFrame(raf);
+    const newBest = score > best;
+    if (newBest){ best = score; $('best').textContent = best; try{localStorage.setItem('nummy-best',best)}catch(e){} }
+    $('overEmoji').textContent = newBest && score>0 ? '🏆' : '🥺';
+    $('overTitle').textContent = newBest && score>0 ? 'New best!' : reason;
+    $('overText').innerHTML = `You scored <b>${score}</b>${newBest&&score>0?' 🎉':''}`;
+    setTimeout(()=>$('over').classList.add('show'), 350);
+  }
+
+  function reset(){
+    $('over').classList.remove('show');
+    state='idle'; score=0; $('score').textContent=0;
+    fill.style.transform='scaleX(1)';
+    msg.textContent='Tap the bigger number to start! 🌸';
+    newPair();
+  }
+  const over = $('over');
+
+  b.forEach((el,i)=> el.addEventListener('pointerdown', e=>{ e.preventDefault(); pick(i); }));
+  $('again').addEventListener('click', reset);
+  addEventListener('keydown', e=>{
+    const k = e.key.toLowerCase();
+    if (over.classList.contains('show')){ if(k==='enter'||k===' ') reset(); return; }
+    if (k==='arrowleft'||k==='a'||k==='1') pick(0);
+    if (k==='arrowright'||k==='d'||k==='2') pick(1);
+  });
+
+  newPair();
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(()=>{});
+})();
+</script>
+</body>
+</html>
